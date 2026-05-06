@@ -14,9 +14,9 @@ import (
 
 	pkgerr "github.com/pkg/errors"
 
-	"boot.dev/linko/internal/build"
-	"boot.dev/linko/internal/linkoerr"
-	"boot.dev/linko/internal/store"
+	"github.com/JA50N14/linko/internal/build"
+	"github.com/JA50N14/linko/internal/linkoerr"
+	"github.com/JA50N14/linko/internal/store"
 )
 
 func main() {
