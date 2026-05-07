@@ -17,6 +17,9 @@ import (
 	"github.com/JA50N14/linko/internal/build"
 	"github.com/JA50N14/linko/internal/linkoerr"
 	"github.com/JA50N14/linko/internal/store"
+	"github.com/lmittmann/tint"
+	"github.com/mattn/go-isatty"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func main() {
@@ -84,11 +87,13 @@ type closeFunc func() error
 
 func initializeLogger(logfile string) (*slog.Logger, closeFunc, error) {
 	handlers := []slog.Handler{
-		slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
-			Level:       slog.LevelDebug,
+		tint.NewHandler(os.Stderr, &tint.Options {
+			Level: slog.LevelDebug,
 			ReplaceAttr: replaceAttr,
+			NoColor: !(isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())),
 		}),
-	}
+	} 
+
 	closers := []closeFunc{}
 
 	if logfile != "" {
