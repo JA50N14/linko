@@ -19,7 +19,7 @@ import (
 	"github.com/JA50N14/linko/internal/store"
 	"github.com/lmittmann/tint"
 	"github.com/mattn/go-isatty"
-	"gopkg.in/natefinch/lumberjack.v2"
+	// "gopkg.in/natefinch/lumberjack.v2"
 )
 
 func main() {
