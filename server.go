@@ -2,13 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
-	"log/slog"
-	"io"
 	"time"
 
 	"github.com/JA50N14/linko/internal/store"
@@ -18,7 +19,7 @@ type server struct {
 	httpServer *http.Server
 	store      store.Store
 	cancel     context.CancelFunc
-	logger *slog.Logger
+	logger     *slog.Logger
 }
 
 func newServer(store store.Store, port int, cancel context.CancelFunc, logger *slog.Logger) *server {
@@ -26,14 +27,14 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
-		Handler: requestLogger(logger)(mux),
+		Handler: requestID()(requestLogger(logger)(mux)),
 	}
 
 	s := &server{
 		httpServer: srv,
 		store:      store,
 		cancel:     cancel,
-		logger: logger,
+		logger:     logger,
 	}
 
 	mux.HandleFunc("GET /", s.handlerIndex)
@@ -72,7 +73,6 @@ func (s *server) handlerShutdown(w http.ResponseWriter, r *http.Request) {
 	go s.cancel()
 }
 
-
 type spyReadCloser struct {
 	io.ReadCloser
 	bytesRead int
@@ -108,9 +108,21 @@ const logContextKey contextKey = "log_context"
 
 type LogContext struct {
 	Username string
-	Error error
+	Error    error
 }
 
+func requestID() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			id := r.Header.Get("X-Request-ID")
+			if id == "" {
+				id = rand.Text()
+			}
+			w.Header().Set("X-Request-ID", id)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
 
 func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -124,7 +136,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			r = r.WithContext(context.WithValue(r.Context(), logContextKey, logCtx))
 
 			next.ServeHTTP(spyWriter, r)
-			
+
 			attrs := []any{
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
@@ -133,6 +145,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 				slog.Int("request_body_bytes", spyReader.bytesRead),
 				slog.Int("response_status", spyWriter.statusCode),
 				slog.Int("response_body_bytes", spyWriter.bytesWritten),
+				slog.String("request_id", spyWriter.Header().Get("X-Request-ID")),
 			}
 
 			if logCtx.Username != "" {
@@ -147,7 +160,6 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 		})
 	}
 }
-
 
 func httpError(ctx context.Context, w http.ResponseWriter, status int, err error) {
 	if logCtx, ok := ctx.Value(logContextKey).(*LogContext); ok {
