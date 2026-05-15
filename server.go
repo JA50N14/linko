@@ -11,8 +11,14 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"strconv"
+	"net/http/pprof"
 
 	"github.com/JA50N14/linko/internal/store"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
 type server struct {
@@ -26,8 +32,8 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 	mux := http.NewServeMux()
 
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: requestID()(requestLogger(logger)(mux)),
+		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
+		Handler: otelhttp.NewHandler(metricsMiddleware(requestID()(requestLogger(logger)(mux))), "http.server"),
 	}
 
 	s := &server{
@@ -37,6 +43,9 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 		logger:     logger,
 	}
 
+	mux.Handle("GET /debug/pprof/", s.authMiddleware(http.HandlerFunc(pprof.Index)))
+	mux.Handle("GET /debug/pprof/profile", s.authMiddleware(http.HandlerFunc(pprof.Profile)))
+	mux.Handle("GET /metrics", promhttp.Handler())
 	mux.HandleFunc("GET /", s.handlerIndex)
 	mux.Handle("POST /api/login", s.authMiddleware(http.HandlerFunc(s.handlerLogin)))
 	mux.Handle("POST /api/shorten", s.authMiddleware(http.HandlerFunc(s.handlerShortenLink)))
@@ -47,6 +56,7 @@ func newServer(store store.Store, port int, cancel context.CancelFunc, logger *s
 
 	return s
 }
+
 
 func (s *server) start() error {
 	ln, err := net.Listen("tcp", s.httpServer.Addr)
@@ -124,6 +134,74 @@ func requestID() func(http.Handler) http.Handler {
 	}
 }
 
+
+func httpError(ctx context.Context, w http.ResponseWriter, status int, err error) {
+	if logCtx, ok := ctx.Value(logContextKey).(*LogContext); ok {
+		logCtx.Error = err
+	}
+
+	msg := err.Error()
+	switch status {
+	case http.StatusUnauthorized, http.StatusForbidden, http.StatusInternalServerError:
+		msg = http.StatusText(status)
+	}
+
+	http.Error(w, msg, status)
+}
+
+
+func redactIP(addr string) string {
+	host, _, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return host
+	}
+
+	if ip4 := ip.To4(); ip4 != nil {
+		return fmt.Sprintf("%d.%d.%d.x", ip4[0], ip4[1], ip4[2])
+	}
+	return ip.String()
+}
+
+var httpRequestsTotal = promauto.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "http_requests_total",
+		Help: "Total number of HTTP requests",
+	},
+	[]string{"method", "path", "status"},
+)
+
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func metricsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		rec := &statusRecorder {
+			ResponseWriter: w,
+			status: http.StatusOK,
+		}
+
+		next.ServeHTTP(rec, r)
+
+		method := r.Method
+		path := r.URL.Path
+		status := strconv.Itoa(rec.status)
+
+		httpRequestsTotal.WithLabelValues(method, path, status).Inc()
+	})
+}
+
 func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +218,7 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			attrs := []any{
 				slog.String("method", r.Method),
 				slog.String("path", r.URL.Path),
-				slog.String("client_ip", r.RemoteAddr),
+				slog.String("client_ip", redactIP(r.RemoteAddr)),
 				slog.Duration("duration", time.Since(start)),
 				slog.Int("request_body_bytes", spyReader.bytesRead),
 				slog.Int("response_status", spyWriter.statusCode),
@@ -159,12 +237,4 @@ func requestLogger(logger *slog.Logger) func(http.Handler) http.Handler {
 			logger.Info("Served request", attrs...)
 		})
 	}
-}
-
-func httpError(ctx context.Context, w http.ResponseWriter, status int, err error) {
-	if logCtx, ok := ctx.Value(logContextKey).(*LogContext); ok {
-		logCtx.Error = err
-	}
-
-	http.Error(w, err.Error(), status)
 }

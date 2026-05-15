@@ -9,8 +9,10 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 	"time"
+	"net/url"
 
 	pkgerr "github.com/pkg/errors"
 
@@ -35,6 +37,17 @@ func main() {
 }
 
 func run(ctx context.Context, cancel context.CancelFunc, httpPort int, dataDir string) int {
+	shutdownTracing, err := initTracing(ctx)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "failed to initialize tracing: %v\n", err)
+		return 1
+	}
+	defer func() {
+		if err := shutdownTracing(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to shut down tracing: %v\n", err)
+		}
+	}()
+
 	logger, cf, err := initializeLogger(os.Getenv("LINKO_LOG_FILE"))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to initialize logger:  %v\n", err)
@@ -180,7 +193,21 @@ func errorAttrs(err error) []slog.Attr {
 	return attrs
 }
 
+var sensitiveKeys = []string{"user", "password", "key", "apikey", "secret", "pin", "creditcardno"}
+
 func replaceAttr(groups []string, a slog.Attr) slog.Attr {
+	if slices.Contains(sensitiveKeys, a.Key) {
+		return slog.String(a.Key, "[REDACTED]")
+	}
+	if a.Value.Kind() == slog.KindString {
+		if u, err := url.Parse(a.Value.String()); err == nil {
+			if _, hasPassword := u.User.Password(); hasPassword {
+				u.User = url.UserPassword(u.User.Username(), "[REDACTED]")
+				return slog.String(a.Key, u.String())
+			}
+		}
+	}
+
 	if a.Key == "error" {
 		err, ok := a.Value.Any().(error)
 		if !ok {
@@ -199,3 +226,4 @@ func replaceAttr(groups []string, a slog.Attr) slog.Attr {
 	}
 	return a
 }
+

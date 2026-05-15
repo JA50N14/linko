@@ -1,0 +1,28 @@
+File: linko
+Build ID: e20a3ede0f19c3646101776ca165d9cd9aa152fb
+Type: cpu
+Time: 2026-05-14 07:09:33 MDT
+Duration: 30s, Total samples = 9.46s (31.53%)
+Showing nodes accounting for 9.30s, 98.31% of 9.46s total
+Dropped 145 nodes (cum <= 0.05s)
+      flat  flat%   sum%        cum   cum%
+     8.92s 94.29% 94.29%      8.92s 94.29%  golang.org/x/crypto/blowfish.encryptBlock
+     0.28s  2.96% 97.25%      9.20s 97.25%  golang.org/x/crypto/blowfish.ExpandKey
+     0.08s  0.85% 98.10%      0.08s  0.85%  internal/runtime/syscall/linux.Syscall6
+     0.01s  0.11% 98.20%      9.21s 97.36%  golang.org/x/crypto/bcrypt.expensiveBlowfishSetup
+     0.01s  0.11% 98.31%      9.27s 97.99%  main.newServer.metricsMiddleware.func5
+         0     0% 98.31%      0.07s  0.74%  github.com/prometheus/client_golang/prometheus.(*Registry).Gather.func1
+         0     0% 98.31%      0.06s  0.63%  github.com/prometheus/client_golang/prometheus.(*processCollector).Collect
+         0     0% 98.31%      0.06s  0.63%  github.com/prometheus/client_golang/prometheus.(*processCollector).processCollect
+         0     0% 98.31%      9.21s 97.36%  golang.org/x/crypto/bcrypt.GenerateFromPassword
+         0     0% 98.31%      9.21s 97.36%  golang.org/x/crypto/bcrypt.bcrypt
+         0     0% 98.31%      9.21s 97.36%  golang.org/x/crypto/bcrypt.newFromPassword
+         0     0% 98.31%      9.23s 97.57%  main.(*server).handlerRedirect
+         0     0% 98.31%      9.26s 97.89%  main.newServer.newServer.requestID.func1.func4
+         0     0% 98.31%      9.26s 97.89%  main.newServer.newServer.requestLogger.func2.func3
+         0     0% 98.31%      9.25s 97.78%  net/http.(*ServeMux).ServeHTTP
+         0     0% 98.31%      9.34s 98.73%  net/http.(*conn).serve
+         0     0% 98.31%      9.27s 97.99%  net/http.HandlerFunc.ServeHTTP
+         0     0% 98.31%      9.27s 97.99%  net/http.serverHandler.ServeHTTP
+         0     0% 98.31%      0.07s  0.74%  syscall.RawSyscall6
+         0     0% 98.31%      0.08s  0.85%  syscall.Syscall
